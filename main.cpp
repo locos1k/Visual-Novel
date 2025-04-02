@@ -22,12 +22,12 @@ struct Wolf {
 void playReactionTest(sf::RenderWindow& window) {
     // Инициализация
     sf::Font font;
-    if (!font.loadFromFile("resources/font.ttf")) {
+    if (!font.loadFromFile("assets/fonts/font.ttf")) {
         return;
     }
 
     sf::SoundBuffer buffer;
-    if (!buffer.loadFromFile("resources/pong.wav")) {
+    if (!buffer.loadFromFile("assets/music/pong.wav")) {
         return;
     }
     sf::Sound sound;
@@ -35,7 +35,7 @@ void playReactionTest(sf::RenderWindow& window) {
 
     // Звук победы
     sf::SoundBuffer victoryBuffer;
-    if (!victoryBuffer.loadFromFile("resources/vict.ogg")) {
+    if (!victoryBuffer.loadFromFile("assets/music/vict.ogg")) {
         return;
     }
     sf::Sound victorySound;
@@ -180,13 +180,13 @@ void playEggCollector(sf::RenderWindow& window) {
     // Инициализация
     sf::Clock clock;
     sf::Font font;
-    if (!font.loadFromFile("resources/font.ttf")) return;
+    if (!font.loadFromFile("rassets/fonts/font.ttf")) return;
 
     // Загрузка ресурсов
     sf::Texture wolfTexture, eggTexture, backgroundTexture;
-    if (!wolfTexture.loadFromFile("resources/wolf.png") || 
-        !eggTexture.loadFromFile("resources/egg.png") || 
-        !backgroundTexture.loadFromFile("resources/background.png")) {
+    if (!wolfTexture.loadFromFile("assets/images/wolf.png") || 
+        !eggTexture.loadFromFile("assets/images/egg.png") || 
+        !backgroundTexture.loadFromFile("assets/images/background.png")) {
         return;
     }
 
@@ -205,7 +205,7 @@ void playEggCollector(sf::RenderWindow& window) {
     // Инициализация яиц
     std::vector<Egg> eggs;
     sf::SoundBuffer collectBuffer;
-    if (!collectBuffer.loadFromFile("resources/pong.wav")) return;
+    if (!collectBuffer.loadFromFile("assets/music/pong.wav")) return;
     sf::Sound collectSound;
     collectSound.setBuffer(collectBuffer);
 
@@ -433,12 +433,12 @@ int main() {
     setlocale(LC_ALL, "Russian");    
 
     sf::Font font;
-    if (!font.loadFromFile("font.ttf")) return -1;
+    if (!font.loadFromFile("assets/fonts/font.ttf")) return -1;
 
     std::vector<Scene> scenes = {
         // Сцена 0
         {            
-            "image.png",
+            "assets/images/image.png",
             "",
             "",     
             L"Паук просыпается. В нос ударяет запах протухших аппельсинов.",
@@ -448,7 +448,7 @@ int main() {
         },
          //Сцена 1
         {
-            "image.png",
+            "assets/images/image.png",
             "",
             "music0.ogg",
             L"Все таки предстоит принять непростое решение",
@@ -457,7 +457,7 @@ int main() {
         },
         // Сцена 2
         {
-            "trash.png",
+            "assets/images/trash.png",
             "",
             "music2.ogg",
             L"Глаза Сергея открылись и увидили дичайший вид.",
@@ -466,8 +466,8 @@ int main() {
         },
         // Сцена 3
         {
-            "podvorot.png",
-            "char0.png",
+            "assets/images/podvorot.png",
+            "assets/images/char0.png",
             "music3.ogg",
             L"Наконец-то Сергей протрезвел.",
             {L"Далее"},
@@ -475,8 +475,8 @@ int main() {
         },
         // Сцена 4
         {
-            "street.png",
-            "char0.png",
+            "assets/images/street.png",
+            "assets/images/char0.png",
             "", 
             L"Серега на веселе выходит из этой подворотни. Куда идти дальше?",
             {L"Направо", L"Налево"},
@@ -484,18 +484,18 @@ int main() {
         },
         // Сцена 5
         {
-            "himki.png",
+            "assets/images/himki.png",
             "",
             "",
             L"Решать надо быстро",
             {L"Идти дальше", L"Бежать со всех ног"},
             {6, 7}
         },
-        // Сцена 6: Встреча с загадочной девушкой
+        // Сцена 6
         {
-            "himki.png", // Парк ночью
-            "char1.png", // Девушка
-            "music6.ogg", // Музыка для сцены
+            "assets/images/himki.png", 
+            "assets/images/char1.png",
+            "music6.ogg", 
             L"Вас настиг Андрей Свинский",
             {L"сражаться", L"сопротивляться"},
             {13, 14}
@@ -544,7 +544,7 @@ int main() {
         window.clear();
         while (window.pollEvent(event)) {
             if (currentScene == 0 && nachh == false){
-                if (!currentMusic.openFromFile("nachalo.ogg")) {
+                if (!currentMusic.openFromFile("assets/music/nachalo.ogg")) {
                     return -1;
                 }
                 nachh = true;
@@ -556,7 +556,7 @@ int main() {
                 playReactionTest(window);
                 reactPlay = true;
                 currentMusic.stop();
-                if (!currentMusic.openFromFile("trezvost.ogg")) {
+                if (!currentMusic.openFromFile("assets/music/trezvost.ogg")) {
                     return -1;
                 }
                 nachh = true;
@@ -566,7 +566,7 @@ int main() {
             }
             if (currentScene == 5 && himki == false){
                 currentMusic.stop();
-                if (!currentMusic.openFromFile("himki.ogg")) {
+                if (!currentMusic.openFromFile("assets/music/himki.ogg")) {
                     return -1;
                 }
                 nachh = true;
