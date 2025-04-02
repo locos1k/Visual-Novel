@@ -180,7 +180,7 @@ void playEggCollector(sf::RenderWindow& window) {
     // Инициализация
     sf::Clock clock;
     sf::Font font;
-    if (!font.loadFromFile("rassets/fonts/font.ttf")) return;
+    if (!font.loadFromFile("assets/fonts/font.ttf")) return;
 
     // Загрузка ресурсов
     sf::Texture wolfTexture, eggTexture, backgroundTexture;
