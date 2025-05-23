@@ -4,649 +4,825 @@
 #include <vector>
 #include <map>
 #include <fstream>
+#include <memory>
+#include <iostream>
 
-sf::RenderWindow window(sf::VideoMode(800, 600), "Визуальная новелла");
+using namespace std;
 
-struct Egg {
-    sf::Sprite sprite;
-    float x, y;
-    float speed;
+struct Scene {
+    string background;
+    vector<string> characters;
+    string music;
+    wstring dialog;
+    vector<wstring> choices;
+    vector<int> nextScenes;
 };
 
-struct Wolf {
-    sf::Sprite sprite;
-    float x, y;
-    float speed;
-};
-
-void playReactionTest(sf::RenderWindow& window) {
-    // Инициализация
+struct GameState {
+    int currentScene = 0;
+    bool inMenu = true;
+    int gameResult = 0;
     sf::Font font;
-    if (!font.loadFromFile("resources/font.ttf")) {
+    
+    vector<Scene> scenes;
+    map<string, sf::Texture> textures;
+    map<string, unique_ptr<sf::Music>> musicMap;
+    sf::Music* currentMusic = nullptr;
+    
+    void playMusic(const string& music) {
+    if (music.empty()) { // Если музыка не указана для сцены
+        if (currentMusic) currentMusic->stop();
+        currentMusic = nullptr;
         return;
     }
 
-    sf::SoundBuffer buffer;
-    if (!buffer.loadFromFile("resources/pong.wav")) {
-        return;
+    auto it = musicMap.find(music);
+    if (it != musicMap.end()) {
+        if (currentMusic != it->second.get()) { // Только если это новая музыка
+            if (currentMusic) currentMusic->stop();
+            currentMusic = it->second.get();
+            currentMusic->setLoop(true);
+            currentMusic->play();
+        }
+    } else {
+        cerr << "Музыка не найдена: " << music << endl;
     }
-    sf::Sound sound;
-    sound.setBuffer(buffer);
+}
+};
 
-    // Звук победы
-    sf::SoundBuffer victoryBuffer;
-    if (!victoryBuffer.loadFromFile("resources/vict.ogg")) {
-        return;
+class Entity {
+public:
+    sf::Sprite sprite;
+    sf::RectangleShape healthBar;
+    int maxHP = 0;
+    int currentHP = 0;
+    int attackMin = 0;
+    int attackMax = 0;
+    int defense = 0;
+
+    void setup(const sf::Texture& texture, int hp, int atkMin, int atkMax, int def, sf::Vector2f position) {
+        sprite.setTexture(texture);
+        maxHP = hp;
+        currentHP = hp;
+        attackMin = atkMin;
+        attackMax = atkMax;
+        defense = def;
+        
+        // Настройка спрайта
+        sprite.setPosition(position);
+        if (position.x > 400) { // Если это демон (справа)
+            sprite.setScale(-1.f, 1.f); // Отражаем по горизонтали
+            sprite.setOrigin(sprite.getLocalBounds().width, 0);
+        }
+        
+        // Настройка полоски здоровья
+        healthBar.setSize(sf::Vector2f(100, 10));
+        healthBar.setFillColor(sf::Color::Red);
+        healthBar.setOutlineThickness(1);
+        healthBar.setOutlineColor(sf::Color::Black);
+        updateHealthBar();
     }
-    sf::Sound victorySound;
-    victorySound.setBuffer(victoryBuffer);
 
-    sf::RectangleShape target(sf::Vector2f(50, 50));
-    target.setFillColor(sf::Color::Red);
-    target.setPosition(-100, -100);
+    void updateHealthBar() {
+        float healthPercentage = static_cast<float>(currentHP) / maxHP;
+        healthBar.setSize(sf::Vector2f(100 * healthPercentage, 10));
+        healthBar.setPosition(sprite.getPosition().x - 50, sprite.getPosition().y - 20);
+    }
 
-    sf::Text instructions;
-    instructions.setFont(font);
-    instructions.setString(L"Нажмите пробел, когда увидите красный квадрат");
-    instructions.setCharacterSize(24);
-    instructions.setFillColor(sf::Color::White);
-    instructions.setPosition(100, 100);
+    int attack() {
+        return rand() % (attackMax - attackMin + 1) + attackMin;
+    }
 
-    sf::Text scoreText;
-    scoreText.setFont(font);
-    scoreText.setCharacterSize(30);
-    scoreText.setFillColor(sf::Color::White);
-    scoreText.setPosition(10, 10);
+    void takeDamage(int damage) {
+        int actualDamage = std::max(0, damage - defense);
+        currentHP = std::max(0, currentHP - actualDamage);
+        updateHealthBar();
+    }
+};
 
-    sf::Text gameOverText;
-    gameOverText.setFont(font);
-    gameOverText.setCharacterSize(36);
-    gameOverText.setFillColor(sf::Color::Red);
-    gameOverText.setString(L"Игра окончена! Нажмите R для повтора");
-    gameOverText.setPosition(100, 300);
+void scaleSprite(sf::Sprite& sprite, const sf::Vector2u& windowSize) {
+    sf::FloatRect bounds = sprite.getGlobalBounds();
+    float scaleX = windowSize.x / bounds.width;
+    float scaleY = windowSize.y / bounds.height;
+    sprite.setScale(scaleX, scaleY);
+}
 
-    int score = 0;
-    int attempts = 3;
-    bool gameActive = false;
-    bool targetVisible = false;
-    bool canPress = true; // Флаг для кд
-    bool victorySoundPlayed = false; // Флаг для звука победы
-    sf::Clock cooldownClock; // Таймер для кд
-    float cooldownTime = 0.2f; // 0.2 секунды кд
+void drawScene(sf::RenderWindow& window, GameState& game) {
+    const Scene& scene = game.scenes[game.currentScene];
+    const sf::Vector2u windowSize = window.getSize();
 
-    sf::Clock gameClock;
-    sf::Clock reactionClock;
+    // Отрисовка фона
+    if (game.textures.count(scene.background)) {
+        sf::Sprite bg(game.textures[scene.background]);
+        scaleSprite(bg, windowSize);
+        window.draw(bg);
+    }
 
-    // Сброс игры
-    auto resetGame = [&]() {
-        score = 0;
-        attempts = 3;
-        gameActive = true;
-        targetVisible = false;
-        canPress = true;
-        victorySoundPlayed = false;
-        target.setPosition(-100, -100);
-        gameClock.restart();
-    };
+    // Отрисовка персонажей с автоматическим позиционированием
+    if (!scene.characters.empty()) {
+        const float BASE_Y = windowSize.y * 0.9f;    // Базовая линия для персонажей
+        const float MARGIN_X = windowSize.x * 0.1f;    // Боковые отступы
+        const float AREA_WIDTH = windowSize.x - 2 * MARGIN_X;
+        const float STEP = AREA_WIDTH / (scene.characters.size() + 1);
 
-    // Основной игровой цикл
-    resetGame();
-    while (window.isOpen()) {
-        sf::Event event;
-        while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed)
-                window.close();
-            else if (event.type == sf::Event::KeyPressed) {
-                if (event.key.code == sf::Keyboard::R) {
-                    resetGame();
+        for (size_t i = 0; i < scene.characters.size(); ++i) {
+            if (game.textures.count(scene.characters[i])) {
+                sf::Sprite charSprite(game.textures[scene.characters[i]]);
+
+                float posX;
+                
+                // Центрирование по горизонтали
+                if(i == 0){
+                    posX = MARGIN_X + STEP * (i * 1.2 + 1) - charSprite.getGlobalBounds().width / 1.2;
                 }
-            }
-        }
-
-        // Обработка ввода
-        if (gameActive) {
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Space)) {
-                if (canPress) { // Проверка кд
-                    if (targetVisible) {
-                        sound.play();
-                        float reactionTime = reactionClock.getElapsedTime().asSeconds();
-                        score += static_cast<int>(1000 / reactionTime);
-                        targetVisible = false;
-                        gameClock.restart();
-                    } else {
-                        attempts--;
-                        if (attempts <= 0) {
-                            gameActive = false;
-                        }
-                    }
-                    canPress = false; // Установка флага кд
-                    cooldownClock.restart(); // Запуск таймера кд
+                else{
+                    posX = MARGIN_X + STEP * (i * 1.2 + 2) - charSprite.getGlobalBounds().width / 1.2;
                 }
+                
+                
+                // Вертикальное смещение для "оживления" сцены
+                float offsetY = (i % 2 == 0) ? 0 : charSprite.getGlobalBounds().height * 0.2f;
+                float posY = BASE_Y - charSprite.getGlobalBounds().height + offsetY;
+                
+                // Позиционирование и отрисовка
+                charSprite.setPosition(posX, posY);
+                window.draw(charSprite);
             }
         }
+    }
 
-        // Проверка кд
-        if (!canPress && cooldownClock.getElapsedTime().asSeconds() > cooldownTime) {
-            canPress = true; // Сброс кд
-        }
+    // Отрисовка диалогового текста
+    sf::Text dialogText;
+    dialogText.setFont(game.font);
+    dialogText.setCharacterSize(32);
+    dialogText.setFillColor(sf::Color::White);
+    dialogText.setOutlineColor(sf::Color::Black);
+    dialogText.setOutlineThickness(2);
+    dialogText.setPosition(50, windowSize.y - 250);
+    dialogText.setString(scene.dialog);
+    window.draw(dialogText);
 
-        // Обновление
-        if (gameActive) {
-            if (!targetVisible && gameClock.getElapsedTime().asSeconds() > 2.0f) {
-                int x = rand() % (800 - 50);
-                int y = rand() % (600 - 50);
-                target.setPosition(x, y);
-                targetVisible = true;
-                reactionClock.restart();
-            }
-        }
+    // Отрисовка вариантов выбора
+    const float CHOICES_START_Y = windowSize.y - 150;
+    for (size_t i = 0; i < scene.choices.size(); ++i) {
+        sf::Text choiceText;
+        choiceText.setFont(game.font);
+        choiceText.setCharacterSize(28);
+        choiceText.setFillColor(sf::Color::Yellow);
+        choiceText.setOutlineColor(sf::Color::Black);
+        choiceText.setOutlineThickness(1);
+        choiceText.setPosition(100, CHOICES_START_Y + i * 50);
+        choiceText.setString(to_wstring(i + 1) + L". " + scene.choices[i]);
+        window.draw(choiceText);
+    }    
+}
 
-        // Отрисовка
-        window.clear();
-        if (gameActive) {
-            window.draw(target);
-            window.draw(instructions);
-            scoreText.setString(L"Очки: " + std::to_wstring(score) + L" | Попыток: " + std::to_wstring(attempts));
-            window.draw(scoreText);
-        } else {
-            sf::Text resultText;
-            resultText.setFont(font);
-            resultText.setCharacterSize(36);
-            resultText.setFillColor(sf::Color::Green);
+void handleGameInput(sf::RenderWindow& window, GameState& game) {
+    sf::Event event;
+    while (window.pollEvent(event)) {
+        if (event.type == sf::Event::Closed) window.close();
+        
+        if (event.type == sf::Event::KeyPressed) {
+            const Scene& scene = game.scenes[game.currentScene];
             
-            if (score > 12000) {
-                if (!victorySoundPlayed) {
-                    victorySound.play();
-                    victorySoundPlayed = true;
+            if (event.key.code >= sf::Keyboard::Num1 && 
+                event.key.code <= sf::Keyboard::Num9) {
+                int choice = event.key.code - sf::Keyboard::Num1;
+                if (choice < scene.nextScenes.size()) {
+                    game.currentScene = scene.nextScenes[choice];
+                    game.playMusic(game.scenes[game.currentScene].music);
                 }
-                return;
-            } else {
-                resultText.setString(L"Поражение! Ваш результат: " + std::to_wstring(score));
             }
-            resultText.setPosition(100, 250);
-            window.draw(resultText);
-
-            gameOverText.setString(L"Нажмите R для повтора");
-            window.draw(gameOverText);
+            
+            if (event.key.code == sf::Keyboard::S) {
+                ofstream save("save.dat");
+                if (save) save << game.currentScene;
+            }
+            
+            if (event.key.code == sf::Keyboard::L) {
+                ifstream save("save.dat");
+                if (save) {
+                    save >> game.currentScene;
+                    game.playMusic(game.scenes[game.currentScene].music);
+                }
+            }
         }
-        window.display();
-
-        // Ограничение частоты кадров
-        sf::sleep(sf::milliseconds(16));
     }
 }
 
-void playEggCollector(sf::RenderWindow& window) {
-    // Инициализация
-    sf::Clock clock;
-    sf::Font font;
-    if (!font.loadFromFile("resources/font.ttf")) return;
 
-    // Загрузка ресурсов
-    sf::Texture wolfTexture, eggTexture, backgroundTexture;
-    if (!wolfTexture.loadFromFile("resources/wolf.png") || 
-        !eggTexture.loadFromFile("resources/egg.png") || 
-        !backgroundTexture.loadFromFile("resources/background.png")) {
-        return;
+void showMenu(sf::RenderWindow& window, GameState& game) {
+    game.playMusic("nachalo.ogg");
+    sf::Text title(L"Лунный Сад", game.font, 50);
+    title.setPosition(400, 100);
+    
+    vector<wstring> options = {L"1. Новая игра", L"2. Загрузить", L"3. Выход"};
+    vector<sf::Text> menuItems;
+    
+    for (size_t i = 0; i < options.size(); ++i) {
+        sf::Text item(options[i], game.font, 35);
+        item.setPosition(450, 250 + i * 100);
+        menuItems.push_back(item);
     }
-
-    // Инициализация волка
-    Wolf wolf;
-    wolf.sprite.setTexture(wolfTexture);
-    wolf.x = 400;
-    wolf.y = 435;
-    wolf.sprite.setPosition(wolf.x, wolf.y);
-    wolf.speed = 5;
-
-    // Инициализация фона
-    sf::Sprite backgroundSprite;
-    backgroundSprite.setTexture(backgroundTexture);
-
-    // Инициализация яиц
-    std::vector<Egg> eggs;
-    sf::SoundBuffer collectBuffer;
-    if (!collectBuffer.loadFromFile("resources/pong.wav")) return;
-    sf::Sound collectSound;
-    collectSound.setBuffer(collectBuffer);
-
-    // Счет и жизни
-    int score = 0;
-    int lives = 3;
-
-    // Текст для отображения счета и жизней
-    sf::Text scoreText;
-    scoreText.setFont(font);
-    scoreText.setCharacterSize(30);
-    scoreText.setFillColor(sf::Color::White);
-    scoreText.setPosition(10, 10);
-
-    sf::Text livesText;
-    livesText.setFont(font);
-    livesText.setCharacterSize(30);
-    livesText.setFillColor(sf::Color::White);
-    livesText.setPosition(10, 50);
-
-    // Текст для экрана победы/поражения
-    sf::Text gameOverText;
-    gameOverText.setFont(font);
-    gameOverText.setCharacterSize(50);
-    gameOverText.setFillColor(sf::Color::Red);
-    gameOverText.setPosition(100, 250);
-
-    // Кнопка "Повторить попытку"
-    sf::Text retryText;
-    retryText.setFont(font);
-    retryText.setCharacterSize(30);
-    retryText.setFillColor(sf::Color::Yellow);
-    retryText.setString(L"Нажмите R для повтора");
-    retryText.setPosition(200, 350);
-
-    bool gameOver = false;
-    sf::Clock victoryClock; // Таймер для отсчета 5 секунд после победы
-    bool victory = false;
-
-    // Игровой цикл
-    while (window.isOpen()) {
+    
+    while (game.inMenu && window.isOpen()) {
         sf::Event event;
         while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed)
-                window.close();
-            if (gameOver && event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::R) {
-                // Перезапуск игры
-                score = 0;
-                lives = 3;
-                eggs.clear();
-                wolf.x = 400;
-                wolf.sprite.setPosition(wolf.x, wolf.y);
-                gameOver = false;
-                victory = false;
+            if (event.type == sf::Event::Closed) window.close();
+            
+            if (event.type == sf::Event::KeyPressed) {
+                if (event.key.code == sf::Keyboard::Num1) {
+                    game.currentScene = 0;
+                    game.inMenu = false;
+                }
+                else if (event.key.code == sf::Keyboard::Num2) {
+                    ifstream save("save.dat");
+                    if (save) {
+                        save >> game.currentScene;
+                        game.inMenu = false;
+                    }
+                }
+                else if (event.key.code == sf::Keyboard::Num3) {
+                    window.close();
+                }
+            }
+        }
+        
+        window.clear(sf::Color(30, 30, 120));
+        window.draw(title);
+        for (auto& item : menuItems) window.draw(item);
+        window.display();
+    }
+}
+
+int runTugOfWarGame(sf::RenderWindow& window, GameState& game) {
+    sf::Texture playerTex, mimicClosedTex, mimicOpenTex;
+    if (!playerTex.loadFromFile("assets/chars/luna.png") ||
+        !mimicClosedTex.loadFromFile("assets/chars/mimic.png") ||
+        !mimicOpenTex.loadFromFile("assets/chars/mimic.png")) 
+    {
+        return -1;
+    }
+
+    // Инициализация объектов
+    sf::Sprite player(playerTex);
+    player.setPosition(200, 500); // Луна слева
+    player.setScale(0.5f, 0.5f);
+
+    sf::Sprite mimic(mimicClosedTex);
+    mimic.setPosition(1000, 100); // Мимик справа
+    mimic.setScale(1.2f, 1.2f);
+
+    // Полоса прогресса
+    sf::RectangleShape progressBar(sf::Vector2f(1000, 20));
+    progressBar.setFillColor(sf::Color::Red);
+    sf::RectangleShape backgroundBar(sf::Vector2f(1000, 20));
+    backgroundBar.setFillColor(sf::Color(128, 128, 128));
+    backgroundBar.setPosition(140, 300);
+    
+    sf::Text infoText;
+    infoText.setFont(game.font);
+    infoText.setCharacterSize(32);
+    infoText.setFillColor(sf::Color::White);
+
+    // Переменные игры
+    float playerForce = 0.f;
+    float botForce = 0.f;
+    float ropePosition = 640.f; // Центр окна (1280x900)
+    bool spacePressed = false;
+    bool gameOver = false;
+    int result = 0;
+    sf::Clock clock;
+    const float MAX_POSITION = 1180.f;
+    const float MIN_POSITION = 100.f;
+
+    // Главный цикл
+    while (window.isOpen() && result == 0) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed) window.close();
+            
+            if (event.type == sf::Event::KeyPressed && !gameOver) {
+                if (event.key.code == sf::Keyboard::Space && !spacePressed) {
+                    playerForce += 3.f; // Увеличиваем силу Луны
+                    spacePressed = true;
+                }
+            }
+            
+            if (event.type == sf::Event::KeyReleased && 
+                event.key.code == sf::Keyboard::Space) {
+                spacePressed = false;
             }
         }
 
+        // Обновление игры
         if (!gameOver) {
-            // Управление волком
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left) && wolf.x > 0) {
-                wolf.x -= wolf.speed;
-            }
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right) && wolf.x < 750) {
-                wolf.x += wolf.speed;
-            }
-            wolf.sprite.setPosition(wolf.x, wolf.y);
-
-            // Генерация яиц
-            if (clock.getElapsedTime().asSeconds() > 2.0f) {
-                Egg egg;
-                egg.sprite.setTexture(eggTexture);
-                egg.x = rand() % 750;
-                egg.y = 0;
-                egg.sprite.setPosition(egg.x, egg.y);
-                egg.speed = 2 + rand() % 3;
-                eggs.push_back(egg);
+            // Автоматическое увеличение силы мимика
+            if (clock.getElapsedTime().asSeconds() > 0.5f) {
+                botForce += 3.8f;
                 clock.restart();
             }
 
-            // Обновление яиц
-            for (auto it = eggs.begin(); it != eggs.end();) {
-                it->y += it->speed;
-                it->sprite.setPosition(it->x, it->y);
+            // Перемещение каната
+            ropePosition += (botForce - playerForce) * 0.7f;
+            ropePosition = std::clamp(ropePosition, MIN_POSITION, MAX_POSITION);
 
-                // Проверка столкновения с волком
-                if (wolf.sprite.getGlobalBounds().intersects(it->sprite.getGlobalBounds())) {
-                    collectSound.play();
-                    score += 10;
-                    it = eggs.erase(it);
-                    continue;
-                }
-
-                // Проверка выхода за пределы экрана
-                if (it->y > 600) {
-                    lives--;
-                    it = eggs.erase(it);
-                    if (lives <= 0) {
-                        gameOver = true;
-                        gameOverText.setString(L"Игра окончена! Вы проиграли.");
-                    }
-                    continue;
-                }
-
-                ++it;
-            }
-
-            // Проверка победы
-            if (score >= 100 && !victory) {
-                victory = true;
+            // Проверка условий завершения
+            if (ropePosition <= MIN_POSITION) { // Победа
                 gameOver = true;
-                gameOverText.setString(L"Поздравляем! Вы победили!");
-                victoryClock.restart(); // Запускаем таймер
-                return;
+                result = 555;
+                mimic.setTexture(mimicOpenTex);
+                infoText.setString(L"Вы победили мимика!\nНажмите пробел для продолжения");
+            } 
+            else if (ropePosition >= MAX_POSITION) { // Поражение
+                gameOver = true;
+                result = 666;
+                mimic.setTexture(mimicOpenTex);
+                infoText.setString(L"Вас поглотил мимик!\nНажмите пробел для продолжения");
             }
 
-            // Проверка, прошло ли 5 секунд после победы
-            if (victory && victoryClock.getElapsedTime().asSeconds() > 5.0f) {
-                window.close(); // Закрываем окно мини-игры
-                return; // Возвращаемся к новелле
+            // Постепенное снижение сил
+            playerForce = std::max(0.f, playerForce - 0.3f);
+            botForce = std::max(0.f, botForce - 0.2f);
+        }
+
+        // Отрисовка
+        window.clear(sf::Color(30, 30, 50));
+        
+        // Обновление прогресс-бара
+        float progressWidth = ((ropePosition - MIN_POSITION) / (MAX_POSITION - MIN_POSITION)) * 1000;
+        progressBar.setSize(sf::Vector2f(progressWidth, 20));
+        progressBar.setPosition(140, 300);
+
+        // Текст с инструкцией
+        infoText.setPosition(140, 200);
+        if (!gameOver) {
+            infoText.setString(L"Жми ПРОБЕЛ, чтобы тянуть канат!");
+        }
+
+        // Отрисовка элементов
+        window.draw(backgroundBar);
+        window.draw(progressBar);
+        window.draw(player);
+        window.draw(mimic);
+        window.draw(infoText);
+        window.display();
+    }
+    
+    // Ожидание нажатия пробела для продолжения
+    while (window.isOpen() && result != 0) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::KeyPressed && 
+                event.key.code == sf::Keyboard::Space) {
+                return result;
             }
+        }
+    }
+    return result;
+}
+
+int runBossBattle(sf::RenderWindow& window, GameState& game) {
+    // Загрузка текстур
+    sf::Texture playerTex, bossTex;
+    if (!playerTex.loadFromFile("assets/chars/luna.png") || 
+        !bossTex.loadFromFile("assets/chars/stellar_demon.png")) {
+        return -1;
+    }
+
+    // Инициализация объектов
+    Entity player, boss;
+    player.setup(playerTex, 100, 20, 15, 20, sf::Vector2f(200, 400));
+    boss.setup(bossTex, 200, 12, 8, 10, sf::Vector2f(1000, 400));
+
+    // Текст интерфейса
+    sf::Text infoText;
+    infoText.setFont(game.font);
+    infoText.setCharacterSize(32);
+    infoText.setFillColor(sf::Color::White);
+    infoText.setPosition(400, 50);
+
+    // Игровые переменные
+    int mana = 30;
+    int potions = 5;
+    bool playerTurn = true;
+    bool gameOver = false;
+    int result = 0;
+    
+    // Главный цикл битвы
+    while (window.isOpen() && !gameOver) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed) window.close();
+            
+            if (playerTurn && event.type == sf::Event::KeyPressed) {
+                switch(event.key.code) {
+                    case sf::Keyboard::Num1: // Атака
+                        boss.takeDamage(player.attack());
+                        playerTurn = false;
+                        break;
+                    case sf::Keyboard::Num2: // Защита
+                        player.defense += 5;
+                        if(player.defense > 30){
+                            player.defense = 30;
+                        }
+                        playerTurn = false;
+                        break;
+                    case sf::Keyboard::Num3: // Зелье
+                        if(potions > 0) {
+                            player.currentHP += 30;
+                            potions--;
+                        }
+                        playerTurn = false;
+                        break;
+                }
+            }
+        }
+
+        // Ход босса
+        if(!playerTurn && !gameOver) {
+            int demonAction = rand() % 3;
+            switch(demonAction) {
+                case 0: // Обычная атака
+                    player.takeDamage(boss.attack());
+                    break;
+                case 1: // Сильная атака
+                    player.takeDamage(40);
+                    break;
+                case 2: // Проклятие
+                    player.defense = max(0, player.defense - 3);
+                    break;
+            }
+            playerTurn = true;
+        }
+
+        // Проверка условий победы
+        if(player.currentHP <= 0) {
+            gameOver = true;
+            result = 666;
+        }
+        else if(boss.currentHP <= 0) {
+            gameOver = true;
+            result = 555;
         }
 
         // Отрисовка
         window.clear();
-        window.draw(backgroundSprite);
-        window.draw(wolf.sprite);
-        for (const auto& egg : eggs) {
-            window.draw(egg.sprite);
-        }
+        
+        // Полоски здоровья
+        player.updateHealthBar();
+        boss.updateHealthBar();
 
-        scoreText.setString("score: " + std::to_string(score));
-        livesText.setString("lives: " + std::to_string(lives));
-        window.draw(scoreText);
-        window.draw(livesText);
+        // Текст с информацией
+        infoText.setString(L"1. Атака\n2. Защита\n3. Зелье (" + to_wstring(potions) + L")");
 
-        if (gameOver) {
-            window.draw(gameOverText);
-            if (!victory) {
-                window.draw(retryText);
-            }
-        }
-
+        window.draw(player.sprite);
+        window.draw(boss.sprite);
+        window.draw(player.healthBar);
+        window.draw(boss.healthBar);
+        window.draw(infoText);
         window.display();
     }
-}
-
-struct Scene {
-    std::string background;
-    std::string character;
-    std::string music;     
-    std::wstring dialog;
-    std::vector<std::wstring> choices;
-    std::vector<int> nextScenes;
-};
-
-void showMenu(sf::RenderWindow& window, std::vector<Scene>& scenes, int& currentScene, sf::Font& font, std::map<std::string, sf::Texture>& textures) {
-    sf::Text menuTitle;
-    menuTitle.setFont(font);
-    menuTitle.setCharacterSize(40);
-    menuTitle.setFillColor(sf::Color::White);
-    menuTitle.setString(L"Визуальная новелла");
-    menuTitle.setPosition(200, 100);
-
-    std::vector<std::wstring> menuOptions = { L"Новая игра", L"Загрузить", L"Выйти" };
-    std::vector<sf::Text> menuTexts;
-
-    for (size_t i = 0; i < menuOptions.size(); i++) {
-        sf::Text text;
-        text.setFont(font);
-        text.setCharacterSize(30);
-        text.setFillColor(sf::Color::Yellow);
-        text.setString(menuOptions[i]);
-        text.setPosition(250, 200 + i * 80);
-        menuTexts.push_back(text);
-    }
-
-    sf::Event event;
-    bool menuActive = true;
-
-    while (menuActive) {
-        while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed)
-                window.close();
-            else if (event.type == sf::Event::KeyPressed) {
-                if (event.key.code >= sf::Keyboard::Num1 && event.key.code <= sf::Keyboard::Num3) {
-                    int choiceIndex = event.key.code - sf::Keyboard::Num1;
-                    if (choiceIndex < menuOptions.size()) {
-                        if (choiceIndex == 0) {
-                            currentScene = 0;
-                            menuActive = false;
-                        } else if (choiceIndex == 1) {
-                            std::ifstream saveFile("save.txt");
-                            if (saveFile.is_open()) {
-                                saveFile >> currentScene;
-                                saveFile.close();
-                                menuActive = false;
-                            } else {
-                                sf::Text noSave;
-                                noSave.setFont(font);
-                                noSave.setCharacterSize(24);
-                                noSave.setFillColor(sf::Color::Red);
-                                noSave.setString(L"Сохранение не найдено");
-                                noSave.setPosition(200, 400);
-                                window.draw(noSave);
-                                window.display();
-                                sf::sleep(sf::seconds(1));
-                            }
-                        } else if (choiceIndex == 2) {
-                            window.close();
-                        }
-                    }
-                }
-            }
-        }
-
-        window.clear();
-        window.draw(menuTitle);
-        for (const auto& text : menuTexts)
-            window.draw(text);
-        window.display();
-    }
+    
+    return result;
 }
 
 int main() {
-    setlocale(LC_ALL, "Russian");    
-
-    sf::Font font;
-    if (!font.loadFromFile("font.ttf")) return -1;
-
-    std::vector<Scene> scenes = {
-        // Сцена 0
-        {            
-            "image.png",
-            "",
-            "",     
-            L"Паук просыпается. В нос ударяет запах протухших аппельсинов.",
-            {L"Где я?", L"Вчера последняя была лишней."},
+    sf::RenderWindow window(sf::VideoMode(1280, 900), "Лунный Сад");
+    GameState game;
+    setlocale(LC_ALL, "Russian");
+    
+    // Загрузка шрифта
+    if (!game.font.loadFromFile("assets/fonts/main.ttf")) {
+        cerr << "Ошибка загрузки шрифта!" << endl;
+        return -1;
+    }
+    
+    // Инициализация сцен
+    game.scenes = {
+        // 0
+        {
+            "assets/bg/luna_room.png",
+            {"assets/chars/luna.png"},
+            "music1_calm.ogg",
+            L"Луна просыпается в своей комнате. Искорка мурлычет у окна. Внезапно кот подталкивает лапой старый медальон.",
+            {L"Взять медальон", L"Проигнорировать"},
             {1, 1}
-            
         },
-         //Сцена 1
+        //1
         {
-            "image.png",
-            "",
-            "music0.ogg",
-            L"Все таки предстоит принять непростое решение",
-            {L"Продолжать лежать", L"Открыть глаза"},
-            {1, 2}
+            "assets/bg/luna_room.png",
+            {"assets/chars/luna.png"},
+            "stuk.ogg",
+            L"Вдруг в дверь кто-то застучал. Луна смотрит в окно и видит, что это Лео",
+            {L"Открыть дверь", L"Подождать пока Лео уйдет"},
+            {3, 2}
         },
-        // Сцена 2
+        //2
         {
-            "trash.png",
-            "",
-            "music2.ogg",
-            L"Глаза Сергея открылись и увидили дичайший вид.",
-            {L"Попытаться встать и протрезветь"},
-            {3}
+            "assets/bg/luna_room.png",
+            {"assets/chars/luna.png", },
+            "stuk1.ogg",
+            L"Стук не прекращается",
+            {L"не открывать", L"открыть"},
+            {125, 3}
         },
-        // Сцена 3
+        //3
         {
-            "podvorot.png",
-            "char0.png",
-            "music3.ogg",
-            L"Наконец-то Сергей протрезвел.",
+            "assets/bg/luna_room.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png"},
+            "music1_calm.ogg",
+            L"Лео:Привет, Луна! Слушай, я нашел старую карту в библиотеке. Говорят, она ведет к Лунному Саду!",
+            {L"Поинтересоваться", L"Не неси чепуху, фуфел"},
+            {4, 125}
+        },
+        //4
+        {
+            "assets/bg/luna_room.png",
+            {"assets/chars/luna.png",  "assets/chars/leo.png"},
+            "music1_calm.ogg",
+            L"Лео:Я слышал, что медальон, который ты недавно нашла, \n может помочь нам попасть туда. Можешь показать мне его?",
+            {L"Да", L"Нет"},
+            {5, 125}
+        },
+        //5
+        {
+            "assets/bg/luna_room.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png"},
+            "music1_calm.ogg",
+            L"Да, это тот самый медальон. Слушай, а давай вместе пойдем туда?",
+            {L"Ну го", L"Мб это опасно?"},
+            {7, 6}
+        },
+        //6
+        {
+            "assets/bg/luna_room.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png"},
+            "music1_calm.ogg",
+            L"Разве это хоть раз тебя останавливало?",
+            {L"Верно, кто не рискует, то не сдаёт рк по физие", L"Не хочу искать приключений на задницу"},
+            {7, 125}
+        },
+        //7
+        {
+            "assets/bg/luna_room.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png"},
+            "music1_calm.ogg",
+            L"С нами пойдут мои друзь, не против?",
+            {L"Конечно нет", L"А разве есть выбор?(нет)"},
+            {8, 8}
+        },
+        //8
+        {
+            "assets/bg/forest_path.png",
+            {},
+            "music1_calm.ogg",
+            L"Спустя час",
             {L"Далее"},
-            {4}
+            {9}
         },
-        // Сцена 4
+        //9
         {
-            "street.png",
-            "char0.png",
-            "", 
-            L"Серега на веселе выходит из этой подворотни. Куда идти дальше?",
-            {L"Направо", L"Налево"},
-            {5, 6}
+            "assets/bg/forest_path.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png","assets/chars/stella.png", "assets/chars/tima.png"},
+            "music1_calm.ogg",
+            L"Вот мы и в сборе, перед нами 3 пути. С кем из компаньенов пойдешь?",
+            {L"Лео", L"Стелла", L"Тимо"},
+            {10, 125, 125}
         },
-        // Сцена 5
+        //10
         {
-            "himki.png",
+            "assets/bg/forest_path.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png"},
+            "music1_calm.ogg",
+            L"Я так рад, что ты выбрала меня. Пойдем налево",
+            {L"Идти"},
+            {11}
+        },
+        //11
+        {
+            "assets/bg/castle.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png"},
+            "castle_enter.ogg",
+            L"Вы пошли с Лео и оказались у входа в замок",
+            {L"Лео, мне страшно", L"Зайти внутрь"},
+            {12, 13}
+        },
+        //12
+        {
+            "assets/bg/castle.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png"},
+            "castle_enter.ogg",
+            L"Да брось, мы ведь такой путь проделали.",
+            {L"Ладно, ты прав. Пойдем", L"Нет, нет, я туда не пойду"},
+            {13, 125}
+        },
+        //13
+        {
+            "assets/bg/castle1.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png"},
+            "merzost.ogg",
+            L"Вы вошли в замок, но не заметили ловушку. Двери захлопнулись",
+            {L"АААА, что же делать", L"Собраться с мыслями и пойти дальше"},
+            {14, 15}
+        },
+        //14
+        {
+            "assets/bg/castle1.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png"},
+            "castle_enter.ogg",
+            L"Лео успакаивает тебя",
+            {L"Далее"},
+            {15}
+        },   
+        //15
+        {
+            "assets/bg/castle1.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png"},
+            "castle_enter.ogg",
+            L"Перед вами сундук и дверь",
+            {L"Открыть сундук", L"Пройти дальше"},
+            {16, 25}
+        },
+        //16
+        {
+            "assets/bg/castle1.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png"},
+            "castle_enter.ogg",
+            L"Перед вами сундук и дверь",
+            {L"Открыть сундук", L"Пройти дальше"},
+            {17}
+        }, 
+        //17
+        {
+            "assets/bg/castle1.png",
+            {},
             "",
-            "",
-            L"Решать надо быстро",
-            {L"Идти дальше", L"Бежать со всех ног"},
-            {6, 7}
-        },
-        // Сцена 6: Встреча с загадочной девушкой
+            L"",
+            {},
+            {-1} // Специальная метка для мини-игры
+        }, 
+        //18
         {
-            "himki.png", // Парк ночью
-            "char1.png", // Девушка
-            "music6.ogg", // Музыка для сцены
-            L"Вас настиг Андрей Свинский",
-            {L"сражаться", L"сопротивляться"},
-            {13, 14}
-        }
+            "assets/bg/luna_dead.png",
+            {""},
+            "end.ogg",
+            L"Вы погибли",
+            {L"Конец игры"},
+            {-2}
+        },   
+        //19
+        {
+            "assets/bg/castle1.png",
+            {""},
+            "vict.ogg",
+            L"Пронесло, но нечего рассиживаться, идем дальше",
+            {L"Пройти дальше"},
+            {20}
+        },  
+                 
+        //20
+        {
+            "assets/bg/map_merge.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png"},
+            "castle_enter.ogg",
+            L"После такого сражения, вы как можно быстрее выбегаете из замка и оказываетесь у портала",
+            {L"В замок, я не вернусь"},
+            {21}
+        },  
+        //21
+        {
+            "assets/bg/final.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png", "assets/chars/stellar.png"},
+            "boss_fight.ogg",
+            L"Вы оказались в логове сектантов. Вдруг из ритуального круга кто-то вылез.",
+            {L"Кто ты?", L"Внезапно напасть"},
+            {22, 24}
+        },
+        //22
+        {
+            "assets/bg/final.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png", "assets/chars/stellar.png"},
+            "boss_fight.ogg",
+            L"Я Стеллар, верховый демон.",
+            {L"Ха-ха-ха, демон без крыльев", L"Такая нечисть как ты должна умереть"},
+            {23, 24}
+        }, 
+        //23
+        {
+            "assets/bg/final.png",
+            {"assets/chars/luna.png", "assets/chars/leo.png", "assets/chars/stellar_demon.png"},
+            "boss_fight.ogg",
+            L"Ты сама напросилась, малявка. Приготовься к смерти.",
+            {L"Вступить в бой"},
+            {24}
+        },  
+        //24
+        {
+            "assets/bg/leo_lose.png",
+            {"assets/chars/luna.png"},
+            "boss_fight.ogg",
+            L"Не успев опомниться, вы видите как Лео нападает на демона. \n Но... Он терпит поражени и умирает",
+            {L"Ты умрешь за это, демон!"},
+            {25}
+        },
+        //25
+        {
+            "assets/bg/final.png",
+            {},
+            "boss_fight1.ogg",
+            L"Выйд из замка, вы оказались в портале. приключения не ждут!",
+            {L"Войти в портал"},
+            {-1}
+        },
+        //26
+        {
+            "assets/bg/demon_lose.png",
+            {},
+            "boss_fight1.ogg",
+            L"Луна побеждает демона и триумфально отрезает ему голову",
+            {L"Далее"},
+            {27}
+        },
+        //27
+        {
+            "assets/bg/leo_dead.png",
+            {},
+            "boss_fight1.ogg",
+            L"Луна побеждает демона и триумфально отрезает ему голову",
+            {L"Далее"},
+            {27}
+        },
         
     };
-
-    std::map<std::string, sf::Texture> textures;
-    std::map<std::string, sf::Music> musicMap; // Карта для хранения музыки
-
-    // Загружаем текстуры и музыку
-    for (const auto& scene : scenes) {
-        if (!scene.background.empty()) {
-            sf::Texture texture;
-            if (!texture.loadFromFile(scene.background)) return -1;
-            textures[scene.background] = texture;
+    
+    // Загрузка текстур
+    for (auto& scene : game.scenes) {
+        if (!scene.background.empty() && !game.textures.count(scene.background)) {
+            sf::Texture tex;
+            if (!tex.loadFromFile(scene.background)) {
+                cerr << "Ошибка загрузки текстуры: " << scene.background << endl;
+            }
+            else game.textures[scene.background] = tex;
         }
-        if (!scene.character.empty()) {
-            sf::Texture texture;
-            if (!texture.loadFromFile(scene.character)) return -1;
-            textures[scene.character] = texture;
-        }        
+        for (auto& character : scene.characters) {
+            if (!character.empty() && !game.textures.count(character)) {
+                sf::Texture tex;
+                if (!tex.loadFromFile(character)) {
+                    cerr << "Ошибка загрузки персонажа: " << character << endl;
+                }
+                else game.textures[character] = tex;
+            }
+        }
     }
-    sf::Text text;
-    text.setFont(font);
-    text.setCharacterSize(30);
-    text.setFillColor(sf::Color::White);
-    text.setPosition(50, 500);
+    
+    // Загрузка музыки
+    vector<string> musicFiles = {"music1_calm.ogg", "music2_light.ogg", "stuk.ogg", "boss_fight.ogg", "end.ogg",
+         "stuk1.ogg", "nachalo.ogg", "castle_enter.ogg", "merzost.ogg", "boss_fight1.ogg"};
+for (auto& file : musicFiles) {
+    auto music = make_unique<sf::Music>();
+    if (!music->openFromFile("assets/music/" + file)) {
+        cerr << "Ошибка загрузки музыки: " << file << endl;
+        continue;
+    }
+    game.musicMap.emplace(file, move(music));
+}
 
-    sf::Sprite backgroundSprite;
-    sf::Sprite characterSprite;
-
-    int currentScene = 0;
-    sf::Music currentMusic;
-
-    bool nachh = false;
-    bool himki = false;
-
-    showMenu(window, scenes, currentScene, font, textures);
-
-    bool eggPlay = false;
-    bool reactPlay = false;
-
-    while (window.isOpen()) {
-        sf::Event event;
-        window.clear();
-        while (window.pollEvent(event)) {
-            if (currentScene == 0 && nachh == false){
-                if (!currentMusic.openFromFile("nachalo.ogg")) {
-                    return -1;
-                }
-                nachh = true;
-                currentMusic.setVolume(100);
-                currentMusic.setLoop(true);
-                currentMusic.play();
-            }
-            if (currentScene == 3 && reactPlay == false){
-                playReactionTest(window);
-                reactPlay = true;
-                currentMusic.stop();
-                if (!currentMusic.openFromFile("trezvost.ogg")) {
-                    return -1;
-                }
-                nachh = true;
-                currentMusic.setVolume(100);
-                currentMusic.setLoop(true);
-                currentMusic.play();
-            }
-            if (currentScene == 5 && himki == false){
-                currentMusic.stop();
-                if (!currentMusic.openFromFile("himki.ogg")) {
-                    return -1;
-                }
-                nachh = true;
-                currentMusic.setVolume(100);
-                currentMusic.setLoop(true);
-                currentMusic.play();
-            }            
-            if(currentScene == 9 && eggPlay == false){
-                playEggCollector(window);
-                eggPlay = true;
-            }
-            if (event.type == sf::Event::Closed)
-                window.close();
-            else if (event.type == sf::Event::KeyPressed) {
-                if (event.key.code == sf::Keyboard::S) {
-                    std::ofstream saveFile("save.txt");
-                    if (saveFile.is_open()) {
-                        saveFile << currentScene;
-                        saveFile.close();
-                    }
-                }
-                if (event.key.code == sf::Keyboard::L) {
-                    std::ifstream saveFile("save.txt");
-                    if (saveFile.is_open()) {
-                        saveFile >> currentScene;
-                        saveFile.close();
-                    }
-                }
-                if (!scenes[currentScene].choices.empty()) {
-                    if (event.key.code >= sf::Keyboard::Num1 && event.key.code <= sf::Keyboard::Num9) {
-                        int choiceIndex = event.key.code - sf::Keyboard::Num1;
-                        if (choiceIndex < scenes[currentScene].nextScenes.size()) {
-                            currentScene = scenes[currentScene].nextScenes[choiceIndex];
-                        }
-                    }
-                }
-            }
-        }  
-        
-        
-        const auto& scene = scenes[currentScene];        
-
-        window.clear(); // Очистка окна перед каждой итерацией
-
-        if (textures.find(scene.background) != textures.end()) {
-            backgroundSprite.setTexture(textures[scene.background]);
-            // Сбрасываем масштаб спрайта перед загрузкой нового фона
-            backgroundSprite.setScale(1.0f, 1.0f);
-            // Масштабируем фон, чтобы он соответствовал размеру окна
-            backgroundSprite.setScale(
-                static_cast<float>(window.getSize().x) / textures[scene.background].getSize().x,
-                static_cast<float>(window.getSize().y) / textures[scene.background].getSize().y
-            );
-            window.draw(backgroundSprite);
-        }
-
-        if (!scene.character.empty() && textures.find(scene.character) != textures.end()) {
-            characterSprite.setTexture(textures[scene.character]);
-            characterSprite.setPosition(600, 100);
-            window.draw(characterSprite);
-        }
-
-        text.setString(scene.dialog);
-        text.setFillColor(sf::Color::Green);
-        window.draw(text);
-
-        if (!scene.choices.empty()) {
-            for (size_t i = 0; i < scene.choices.size(); i++) {
-                sf::Text choiceText;
-                choiceText.setFont(font);
-                choiceText.setCharacterSize(24);
-                choiceText.setFillColor(sf::Color::Yellow);
-                choiceText.setString(L"[" + std::to_wstring(i + 1) + L"] " + scene.choices[i]);
-                choiceText.setPosition(50, 400 + i * 40);
-                window.draw(choiceText);
-            }
-        }
-
-        window.display();
+// +++ Добавьте проверку здесь +++
+for (size_t i = 0; i < game.scenes.size(); ++i) {
+    const auto& scene = game.scenes[i];
+    if (!scene.music.empty() && !game.musicMap.count(scene.music)) {
+        cerr << "Предупреждение: Музыка для сцены " << i 
+             << " (" << scene.music << ") не загружена!" << endl;
+    }
+}
+    
+    // Главный цикл
+    showMenu(window, game);
+    game.playMusic(game.scenes[game.currentScene].music);
+    // В главном игровом цикле (замените текущую обработку сцены 17):
+while (window.isOpen()) {
+    handleGameInput(window, game);
+    
+    // Специальная обработка для сцены 17
+    if (game.currentScene == 17) {
+        int result = runTugOfWarGame(window, game);
+        game.currentScene = (result == 555) ? 19 : 18; // Переход на 18 или 125
+        game.playMusic(game.scenes[game.currentScene].music);
+    }
+    else if (game.currentScene == 25) {
+        int result = runBossBattle(window, game);
+        game.currentScene = (result == 555) ? 26 : 18;
+        game.playMusic(game.scenes[game.currentScene].music);
     }
 
+    
+    
+    // Обычная отрисовка
+    window.clear();
+    drawScene(window, game);
+    window.display();
+}
+    
     return 0;
 }
