@@ -124,15 +124,23 @@ void handleGameInput(sf::RenderWindow& window, GameState& game) {
 
 void showMenu(sf::RenderWindow& window, GameState& game) {
     game.playMusic("nachalo.ogg");
-    sf::Text title(L"Лунный Сад", game.font, 50);
-    title.setPosition(400, 100);
+    sf::Texture backgroundTexture;
+    if (!backgroundTexture.loadFromFile("assets/bg/image.png")) {
+        std::cerr << "Failed to load background image!" << std::endl;
+    }
+    sf::Sprite backgroundSprite(backgroundTexture);
+    sf::Vector2f windowSize = static_cast<sf::Vector2f>(window.getSize());
+    backgroundSprite.setScale(
+        windowSize.x / backgroundTexture.getSize().x,
+        windowSize.y / backgroundTexture.getSize().y
+    );
     
-    vector<wstring> options = {L"1. Новая игра", L"2. Загрузить", L"3. Выход"};
+    vector<wstring> options = {L"1. Новая игра", L"2. Выход"};
     vector<sf::Text> menuItems;
     
     for (size_t i = 0; i < options.size(); ++i) {
-        sf::Text item(options[i], game.font, 35);
-        item.setPosition(450, 250 + i * 100);
+        sf::Text item(options[i], game.font, 50);
+        item.setPosition(550, 550 + i * 75);
         menuItems.push_back(item);
     }
     
@@ -147,20 +155,12 @@ void showMenu(sf::RenderWindow& window, GameState& game) {
                     game.inMenu = false;
                 }
                 else if (event.key.code == sf::Keyboard::Num2) {
-                    ifstream save("save.dat");
-                    if (save) {
-                        save >> game.currentScene;
-                        game.inMenu = false;
-                    }
-                }
-                else if (event.key.code == sf::Keyboard::Num3) {
                     window.close();
                 }
             }
         }
-        
-        window.clear(sf::Color(30, 30, 120));
-        window.draw(title);
+        window.clear();
+        window.draw(backgroundSprite);
         for (auto& item : menuItems) window.draw(item);
         window.display();
     }
@@ -175,16 +175,14 @@ int runTugOfWarGame(sf::RenderWindow& window, GameState& game) {
         return -1;
     }
 
-    // Инициализация объектов
     sf::Sprite player(playerTex);
-    player.setPosition(200, 500); // Луна слева
+    player.setPosition(200, 500); 
     player.setScale(0.5f, 0.5f);
 
     sf::Sprite mimic(mimicClosedTex);
-    mimic.setPosition(1000, 100); // Мимик справа
+    mimic.setPosition(1000, 100); 
     mimic.setScale(1.2f, 1.2f);
 
-    // Полоса прогресса
     sf::RectangleShape progressBar(sf::Vector2f(1000, 20));
     progressBar.setFillColor(sf::Color::Red);
     sf::RectangleShape backgroundBar(sf::Vector2f(1000, 20));
@@ -196,10 +194,9 @@ int runTugOfWarGame(sf::RenderWindow& window, GameState& game) {
     infoText.setCharacterSize(32);
     infoText.setFillColor(sf::Color::White);
 
-    // Переменные игры
     float playerForce = 0.f;
     float botForce = 0.f;
-    float ropePosition = 640.f; // Центр окна (1280x900)
+    float ropePosition = 640.f;
     bool spacePressed = false;
     bool gameOver = false;
     int result = 0;
@@ -207,7 +204,6 @@ int runTugOfWarGame(sf::RenderWindow& window, GameState& game) {
     const float MAX_POSITION = 1180.f;
     const float MIN_POSITION = 100.f;
 
-    // Главный цикл
     while (window.isOpen() && result == 0) {
         sf::Event event;
         while (window.pollEvent(event)) {
@@ -215,7 +211,7 @@ int runTugOfWarGame(sf::RenderWindow& window, GameState& game) {
             
             if (event.type == sf::Event::KeyPressed && !gameOver) {
                 if (event.key.code == sf::Keyboard::Space && !spacePressed) {
-                    playerForce += 3.f; // Увеличиваем силу Луны
+                    playerForce += 3.f;
                     spacePressed = true;
                 }
             }
@@ -226,52 +222,41 @@ int runTugOfWarGame(sf::RenderWindow& window, GameState& game) {
             }
         }
 
-        // Обновление игры
         if (!gameOver) {
-            // Автоматическое увеличение силы мимика
             if (clock.getElapsedTime().asSeconds() > 0.5f) {
                 botForce += 3.8f;
                 clock.restart();
             }
 
-            // Перемещение каната
             ropePosition += (botForce - playerForce) * 0.7f;
             ropePosition = std::clamp(ropePosition, MIN_POSITION, MAX_POSITION);
-
-            // Проверка условий завершения
-            if (ropePosition <= MIN_POSITION) { // Победа
+            if (ropePosition <= MIN_POSITION) { 
                 gameOver = true;
                 result = 555;
                 mimic.setTexture(mimicOpenTex);
                 infoText.setString(L"Вы победили мимика!\nНажмите пробел для продолжения");
             } 
-            else if (ropePosition >= MAX_POSITION) { // Поражение
+            else if (ropePosition >= MAX_POSITION) { 
                 gameOver = true;
                 result = 666;
                 mimic.setTexture(mimicOpenTex);
                 infoText.setString(L"Вас поглотил мимик!\nНажмите пробел для продолжения");
             }
 
-            // Постепенное снижение сил
             playerForce = std::max(0.f, playerForce - 0.3f);
             botForce = std::max(0.f, botForce - 0.2f);
         }
 
-        // Отрисовка
         window.clear(sf::Color(30, 30, 50));
         
-        // Обновление прогресс-бара
         float progressWidth = ((ropePosition - MIN_POSITION) / (MAX_POSITION - MIN_POSITION)) * 1000;
         progressBar.setSize(sf::Vector2f(progressWidth, 20));
         progressBar.setPosition(140, 300);
-
-        // Текст с инструкцией
         infoText.setPosition(140, 200);
         if (!gameOver) {
             infoText.setString(L"Жми ПРОБЕЛ, чтобы тянуть канат!");
         }
 
-        // Отрисовка элементов
         window.draw(backgroundBar);
         window.draw(progressBar);
         window.draw(player);
@@ -280,7 +265,6 @@ int runTugOfWarGame(sf::RenderWindow& window, GameState& game) {
         window.display();
     }
     
-    // Ожидание нажатия пробела для продолжения
     while (window.isOpen() && result != 0) {
         sf::Event event;
         while (window.pollEvent(event)) {
@@ -294,33 +278,25 @@ int runTugOfWarGame(sf::RenderWindow& window, GameState& game) {
 }
 
 int runBossBattle(sf::RenderWindow& window, GameState& game) {
-    // Загрузка текстур
     sf::Texture playerTex, bossTex;
     if (!playerTex.loadFromFile("assets/chars/luna.png") || 
         !bossTex.loadFromFile("assets/chars/stellar_demon.png")) {
         return -1;
     }
-
-    // Инициализация объектов
     Entity player, boss;
     player.setup(playerTex, 100, 20, 15, 20, sf::Vector2f(200, 400));
     boss.setup(bossTex, 200, 12, 8, 10, sf::Vector2f(1000, 400));
-
-    // Текст интерфейса
     sf::Text infoText;
     infoText.setFont(game.font);
     infoText.setCharacterSize(32);
     infoText.setFillColor(sf::Color::White);
     infoText.setPosition(400, 50);
-
-    // Игровые переменные
-    int mana = 30;
-    int potions = 5;
+    
+    int potions = 4;
     bool playerTurn = true;
     bool gameOver = false;
     int result = 0;
     
-    // Главный цикл битвы
     while (window.isOpen() && !gameOver) {
         sf::Event event;
         while (window.pollEvent(event)) {
@@ -328,18 +304,18 @@ int runBossBattle(sf::RenderWindow& window, GameState& game) {
             
             if (playerTurn && event.type == sf::Event::KeyPressed) {
                 switch(event.key.code) {
-                    case sf::Keyboard::Num1: // Атака
+                    case sf::Keyboard::Num1: 
                         boss.takeDamage(player.attack());
                         playerTurn = false;
                         break;
-                    case sf::Keyboard::Num2: // Защита
+                    case sf::Keyboard::Num2: 
                         player.defense += 5;
                         if(player.defense > 30){
                             player.defense = 30;
                         }
                         playerTurn = false;
                         break;
-                    case sf::Keyboard::Num3: // Зелье
+                    case sf::Keyboard::Num3:
                         if(potions > 0) {
                             player.currentHP += 30;
                             potions--;
@@ -350,24 +326,22 @@ int runBossBattle(sf::RenderWindow& window, GameState& game) {
             }
         }
 
-        // Ход босса
         if(!playerTurn && !gameOver) {
             int demonAction = rand() % 3;
             switch(demonAction) {
-                case 0: // Обычная атака
+                case 0: 
                     player.takeDamage(boss.attack());
                     break;
-                case 1: // Сильная атака
+                case 1: 
                     player.takeDamage(40);
                     break;
-                case 2: // Проклятие
+                case 2: 
                     player.defense = max(0, player.defense - 3);
                     break;
             }
             playerTurn = true;
         }
 
-        // Проверка условий победы
         if(player.currentHP <= 0) {
             gameOver = true;
             result = 666;
@@ -377,14 +351,11 @@ int runBossBattle(sf::RenderWindow& window, GameState& game) {
             result = 555;
         }
 
-        // Отрисовка
         window.clear();
         
-        // Полоски здоровья
         player.updateHealthBar();
         boss.updateHealthBar();
 
-        // Текст с информацией
         infoText.setString(L"1. Атака\n2. Защита\n3. Зелье (" + to_wstring(potions) + L")");
 
         window.draw(player.sprite);

@@ -24,7 +24,7 @@ struct GameState {
     sf::Music* currentMusic = nullptr;
     
     void playMusic(const string& music) {
-    if (music.empty()) { // Если музыка не указана для сцены
+    if (music.empty()) { 
         if (currentMusic) currentMusic->stop();
         currentMusic = nullptr;
         return;
@@ -32,7 +32,7 @@ struct GameState {
 
     auto it = musicMap.find(music);
     if (it != musicMap.end()) {
-        if (currentMusic != it->second.get()) { // Только если это новая музыка
+        if (currentMusic != it->second.get()) { 
             if (currentMusic) currentMusic->stop();
             currentMusic = it->second.get();
             currentMusic->setLoop(true);

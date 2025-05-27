@@ -10,14 +10,12 @@ void Entity::setup(const sf::Texture& texture, int hp, int atkMin, int atkMax, i
     attackMax = atkMax;
     defense = def;
         
-    // Настройка спрайта
     sprite.setPosition(position);
-    if (position.x > 400) { // Если это демон (справа)
-        sprite.setScale(-1.f, 1.f); // Отражаем по горизонтали
+    if (position.x > 400) { 
+        sprite.setScale(-1.f, 1.f);
         sprite.setOrigin(sprite.getLocalBounds().width, 0);
     }
         
-    // Настройка полоски здоровья
     healthBar.setSize(sf::Vector2f(100, 10));
     healthBar.setFillColor(sf::Color::Red);
     healthBar.setOutlineThickness(1);
