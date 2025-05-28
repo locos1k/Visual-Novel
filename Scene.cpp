@@ -52,7 +52,7 @@ std::vector<Scene> loadScenes() {
         {
             "assets/bg/luna_room.png",
             {"assets/chars/luna.png", "assets/chars/leo.png"},
-            "",
+            "nachalo.ogg",
             L"Да, это тот самый медальон. Слушай, а давай вместе пойдем туда?",
             {L"Ну го", L"Мб это опасно?"},
             {7, 6}
@@ -61,7 +61,7 @@ std::vector<Scene> loadScenes() {
         {
             "assets/bg/luna_room.png",
             {"assets/chars/luna.png", "assets/chars/leo.png"},
-            "",
+            "nachalo.ogg",
             L"Разве это хоть раз тебя останавливало?",
             {L"Верно, кто не рискует, то не сдаёт рк по физие", L"Не хочу искать приключений на задницу"},
             {7, 28}
@@ -70,8 +70,8 @@ std::vector<Scene> loadScenes() {
         {
             "assets/bg/luna_room.png",
             {"assets/chars/luna.png", "assets/chars/leo.png"},
-            "",
-            L"С нами пойдут мои друзь, не против?",
+            "nachalo.ogg",
+            L"С нами пойдут мои друзья, не против?",
             {L"Конечно нет", L"А разве есть выбор?(нет)"},
             {8, 8}
         },
@@ -79,7 +79,7 @@ std::vector<Scene> loadScenes() {
         {
             "assets/bg/forest_path.png",
             {},
-            "",
+            "nachalo.ogg",
             L"Спустя час",
             {L"Далее"},
             {9}
@@ -88,7 +88,7 @@ std::vector<Scene> loadScenes() {
         {
             "assets/bg/forest_path.png",
             {"assets/chars/luna.png", "assets/chars/leo.png","assets/chars/stella.png", "assets/chars/tima.png"},
-            "",
+            "nachalo.ogg",
             L"Вот мы и в сборе, перед нами 3 пути. С кем из компаньенов пойдешь?",
             {L"Лео", L"Не хватило времени", L"Не хватило времени"},
             {10, 10, 10}
@@ -97,7 +97,7 @@ std::vector<Scene> loadScenes() {
         {
             "assets/bg/forest_path.png",
             {"assets/chars/luna.png", "assets/chars/leo.png"},
-            "",
+            "nachalo.ogg",
             L"Я так рад, что ты выбрала меня. Пойдем налево",
             {L"Идти"},
             {11}
@@ -145,7 +145,7 @@ std::vector<Scene> loadScenes() {
             "castle_enter.ogg",
             L"Перед вами сундук и дверь",
             {L"Открыть сундук", L"Пройти дальше"},
-            {30, 25}
+            {30, 21}
         },
         //16
         {

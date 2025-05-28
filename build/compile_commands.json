@@ -1,0 +1,26 @@
+[
+{
+  "directory": "/home/subzero245y/Visual-Novel/build",
+  "command": "/usr/bin/g++  -I/home/subzero245y/Visual-Novel/src -g -std=gnu++17 -o CMakeFiles/LunarGarden.dir/main.cpp.o -c /home/subzero245y/Visual-Novel/main.cpp",
+  "file": "/home/subzero245y/Visual-Novel/main.cpp",
+  "output": "CMakeFiles/LunarGarden.dir/main.cpp.o"
+},
+{
+  "directory": "/home/subzero245y/Visual-Novel/build",
+  "command": "/usr/bin/g++  -I/home/subzero245y/Visual-Novel/src -g -std=gnu++17 -o CMakeFiles/LunarGarden.dir/Entity.cpp.o -c /home/subzero245y/Visual-Novel/Entity.cpp",
+  "file": "/home/subzero245y/Visual-Novel/Entity.cpp",
+  "output": "CMakeFiles/LunarGarden.dir/Entity.cpp.o"
+},
+{
+  "directory": "/home/subzero245y/Visual-Novel/build",
+  "command": "/usr/bin/g++  -I/home/subzero245y/Visual-Novel/src -g -std=gnu++17 -o CMakeFiles/LunarGarden.dir/Scene.cpp.o -c /home/subzero245y/Visual-Novel/Scene.cpp",
+  "file": "/home/subzero245y/Visual-Novel/Scene.cpp",
+  "output": "CMakeFiles/LunarGarden.dir/Scene.cpp.o"
+},
+{
+  "directory": "/home/subzero245y/Visual-Novel/build",
+  "command": "/usr/bin/g++  -I/home/subzero245y/Visual-Novel/src -g -std=gnu++17 -o CMakeFiles/LunarGarden.dir/GameLogic.cpp.o -c /home/subzero245y/Visual-Novel/GameLogic.cpp",
+  "file": "/home/subzero245y/Visual-Novel/GameLogic.cpp",
+  "output": "CMakeFiles/LunarGarden.dir/GameLogic.cpp.o"
+}
+]

@@ -1,0 +1,3 @@
+/home/subzero245y/Visual-Novel/build/CMakeFiles/LunarGarden.dir
+/home/subzero245y/Visual-Novel/build/CMakeFiles/edit_cache.dir
+/home/subzero245y/Visual-Novel/build/CMakeFiles/rebuild_cache.dir

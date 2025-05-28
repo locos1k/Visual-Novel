@@ -296,6 +296,17 @@ int runBossBattle(sf::RenderWindow& window, GameState& game) {
     bool playerTurn = true;
     bool gameOver = false;
     int result = 0;
+      sf::Texture backgroundTexture;
+    if (!backgroundTexture.loadFromFile("assets/bg/tr.png")) {
+        std::cerr << "Failed to load background image!" << std::endl;
+    }
+    sf::Sprite backgroundSprite(backgroundTexture);
+    sf::Vector2u windowSize = window.getSize();
+    backgroundSprite.setScale(
+        static_cast<float>(windowSize.x) / backgroundTexture.getSize().x,
+        static_cast<float>(windowSize.y) / backgroundTexture.getSize().y
+    );
+
     
     while (window.isOpen() && !gameOver) {
         sf::Event event;
@@ -317,7 +328,7 @@ int runBossBattle(sf::RenderWindow& window, GameState& game) {
                         break;
                     case sf::Keyboard::Num3:
                         if(potions > 0) {
-                            player.currentHP += 30;
+                            player.currentHP = min(100, player.currentHP + 30);
                             potions--;
                         }
                         playerTurn = false;
@@ -330,7 +341,7 @@ int runBossBattle(sf::RenderWindow& window, GameState& game) {
             int demonAction = rand() % 3;
             switch(demonAction) {
                 case 0: 
-                    player.takeDamage(boss.attack());
+                    player.takeDamage(25);
                     break;
                 case 1: 
                     player.takeDamage(40);
@@ -352,10 +363,10 @@ int runBossBattle(sf::RenderWindow& window, GameState& game) {
         }
 
         window.clear();
+        window.draw(backgroundSprite);
         
         player.updateHealthBar();
         boss.updateHealthBar();
-
         infoText.setString(L"1. Атака\n2. Защита\n3. Зелье (" + to_wstring(potions) + L")");
 
         window.draw(player.sprite);
